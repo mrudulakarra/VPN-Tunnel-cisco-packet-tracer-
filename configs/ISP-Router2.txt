@@ -1,0 +1,89 @@
+! ==============================================================================
+! CISCO ROUTER CONFIGURATION: ISP-Router2 (Router2)
+! Project: Virtual Private Network for Multi-Branch Organizations
+! Device: Cisco 1841 Integrated Services Router
+! Location: Internet Service Provider (ISP) Core Cloud
+! Compatibility: Cisco Packet Tracer 6.2 / 7.x / 8.x & Cisco IOS 12.4/15.x
+! ==============================================================================
+
+! ------------------------------------------------------------------------------
+! STEP 1: INITIAL SYSTEM CONFIGURATION & HOSTNAME SETUP
+! ------------------------------------------------------------------------------
+enable
+configure terminal
+
+! Set device hostname representing the ISP / Public Internet Backbone
+hostname ISP-Router2
+
+! Disable DNS lookup
+no ip domain-lookup
+
+! Console line configuration
+line con 0
+ logging synchronous
+ exec-timeout 0 0
+ exit
+
+! Security banner notification
+banner motd #
+*******************************************************************************
+*             INTERNET SERVICE PROVIDER (ISP) BACKBONE ROUTER 2               *
+*     Public Transit Provider - Relays Public Routable IPsec ESP Traffic      *
+*******************************************************************************
+#
+
+! ------------------------------------------------------------------------------
+! STEP 2: INTERFACE CONFIGURATION (PUBLIC WAN LINKS)
+! ------------------------------------------------------------------------------
+
+! FastEthernet0/0 -> Public link connecting to HQ-Router0 (Fa0/0)
+! Network: 12.12.12.0/28
+! Subnet Mask: 255.255.255.240
+interface FastEthernet0/0
+ description WAN - Public Link to HQ-Router0 Fa0/0 (12.12.12.0/28)
+ ip address 12.12.12.2 255.255.255.240
+ no shutdown
+ exit
+
+! FastEthernet0/1 -> Public link connecting to Branch-Router1 (Fa0/1)
+! Network: 23.23.23.0/28
+! Subnet Mask: 255.255.255.240
+interface FastEthernet0/1
+ description WAN - Public Link to Branch-Router1 Fa0/1 (23.23.23.0/28)
+ ip address 23.23.23.1 255.255.255.240
+ no shutdown
+ exit
+
+! ------------------------------------------------------------------------------
+! STEP 3: ROUTING BEHAVIOR & PUBLIC INTERNET SIMULATION
+! ------------------------------------------------------------------------------
+! IMPORTANT NETWORKING CONCEPT:
+! In real-world enterprise architectures, the ISP has NO knowledge of private
+! enterprise RFC 1918 subnets (192.168.1.0/24 or 192.168.2.0/24).
+!
+! The ISP router only routes between public IP blocks:
+! - 12.12.12.0/28 (Directly Connected on Fa0/0)
+! - 23.23.23.0/28 (Directly Connected on Fa0/1)
+!
+! Because both WAN links are directly connected to ISP-Router2, NO static or
+! dynamic routing protocol configuration is required on this router!
+!
+! When HQ sends an encrypted IPsec ESP packet:
+!   Outer Source IP: 12.12.12.1 -> Outer Destination IP: 23.23.23.2
+! ISP-Router2 forwards it seamlessly using its connected routing table without
+! ever seeing or decrypting the private data payload inside.
+
+! ------------------------------------------------------------------------------
+! STEP 4: SAVE CONFIGURATION TO NVRAM
+! ------------------------------------------------------------------------------
+end
+write memory
+
+! ==============================================================================
+! VERIFICATION COMMANDS ON ISP-ROUTER2:
+! ==============================================================================
+! show ip interface brief       - Confirm Fa0/0 (12.12.12.2) and Fa0/1 (23.23.23.1) are up/up
+! show ip route                 - Verify directly connected subnets (12.12.12.0/28 & 23.23.23.0/28)
+! ping 12.12.12.1               - Test connectivity to HQ-Router0
+! ping 23.23.23.2               - Test connectivity to Branch-Router1
+! ==============================================================================

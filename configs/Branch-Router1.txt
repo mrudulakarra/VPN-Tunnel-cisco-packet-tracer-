@@ -1,0 +1,164 @@
+! ==============================================================================
+! CISCO ROUTER CONFIGURATION: Branch-Router1 (Router1)
+! Project: Virtual Private Network for Multi-Branch Organizations
+! Device: Cisco 1841 Integrated Services Router
+! Location: Branch Office Network
+! Compatibility: Cisco Packet Tracer 6.2 / 7.x / 8.x & Cisco IOS 12.4/15.x
+! ==============================================================================
+
+! ------------------------------------------------------------------------------
+! STEP 1: INITIAL SYSTEM CONFIGURATION & HOSTNAME SETUP
+! ------------------------------------------------------------------------------
+enable
+configure terminal
+
+! Set device hostname for clear network identification
+hostname Branch-Router1
+
+! Disable DNS lookup to prevent CLI hangs on mistyped commands
+no ip domain-lookup
+
+! Configure console logging to avoid command interruption by system alerts
+line con 0
+ logging synchronous
+ exec-timeout 0 0
+ exit
+
+! Security banner notification
+banner motd #
+*******************************************************************************
+*             AUTHORIZED ACCESS ONLY - BRANCH OFFICE ROUTER 1                 *
+*     Site-to-Site Encrypted IPsec VPN Gateway to Headquarters (Router0)      *
+*******************************************************************************
+#
+
+! ------------------------------------------------------------------------------
+! STEP 2: INTERFACE CONFIGURATION (LAN & WAN)
+! ------------------------------------------------------------------------------
+
+! FastEthernet0/0 -> LAN Interface connected to Branch Switch (Switch1)
+! Network: 192.168.2.0/24 (Branch Private LAN)
+! Serves as the Default Gateway for Branch PC0 and internal LAN clients
+interface FastEthernet0/0
+ description LAN - Default Gateway for Branch Internal Subnet (192.168.2.0/24)
+ ip address 192.168.2.254 255.255.255.0
+ no shutdown
+ exit
+
+! FastEthernet0/1 -> WAN Interface connected to ISP-Router2 (Fa0/1)
+! Network: 23.23.23.0/28 (Public WAN Link)
+! Subnet Mask: 255.255.255.240 (/28 allows 14 usable IP addresses)
+interface FastEthernet0/1
+ description WAN - Uplink to ISP-Router2 Fa0/1 (23.23.23.0/28)
+ ip address 23.23.23.2 255.255.255.240
+ no shutdown
+ exit
+
+! ------------------------------------------------------------------------------
+! STEP 3: ROUTING CONFIGURATION (DEFAULT ROUTE TO ISP)
+! ------------------------------------------------------------------------------
+
+! Branch router sends all non-local/Internet-bound traffic to the ISP next-hop (23.23.23.1)
+! Note: The ISP router does not know private LAN subnets (192.168.1.0/24 or 192.168.2.0/24).
+! Traffic destined for HQ LAN is routed via this default route and intercepted
+! by the IPsec crypto map on the outgoing interface.
+ip route 0.0.0.0 0.0.0.0 23.23.23.1
+
+! ------------------------------------------------------------------------------
+! STEP 4: IPSEC PHASE 1 - ISAKMP / IKE POLICY (CONTROL PLANE NEGOTIATION)
+! ------------------------------------------------------------------------------
+
+! Define ISAKMP (IKEv1) policy priority 10
+! Parameters MUST match HQ-Router0 policy for successful negotiation (HAGLE):
+! 1. Hash: SHA (Secure Hash Algorithm 1)
+! 2. Authentication: Pre-shared key (PSK)
+! 3. Group: Diffie-Hellman Group 2 (1024-bit key exchange modulus)
+! 4. Lifetime: 86400 seconds (24 hours)
+! 5. Encryption: AES (Advanced Encryption Standard 128-bit)
+crypto isakmp policy 10
+ encr aes
+ hash sha
+ authentication pre-share
+ group 2
+ lifetime 86400
+ exit
+
+! Configure the Pre-Shared Key (PSK) matching HQ-Router0
+! Address points to the WAN IP of HQ-Router0 (12.12.12.1)
+crypto isakmp key CiscoVPN2026! address 12.12.12.1
+
+! ------------------------------------------------------------------------------
+! STEP 5: IPSEC PHASE 2 - TRANSFORM SET & SECURITY ASSOCIATIONS (DATA PLANE)
+! ------------------------------------------------------------------------------
+
+! Define the Transform Set for encrypting user data payload in Phase 2
+! - esp-aes: IPsec Encapsulating Security Payload with AES encryption
+! - esp-sha-hmac: SHA Hashed Message Authentication Code for integrity & origin authentication
+crypto ipsec transform-set TS-VPN esp-aes esp-sha-hmac
+ mode tunnel
+ exit
+
+! ------------------------------------------------------------------------------
+! STEP 6: INTERESTING TRAFFIC ACCESS CONTROL LIST (ACL)
+! ------------------------------------------------------------------------------
+
+! Extended ACL 101 specifies what traffic must trigger and enter the VPN tunnel.
+! Symmetrical to HQ ACL:
+! Source: Branch LAN (192.168.2.0/24, wildcard 0.0.0.255)
+! Destination: HQ LAN (192.168.1.0/24, wildcard 0.0.0.255)
+access-list 101 permit ip 192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255
+
+! ------------------------------------------------------------------------------
+! STEP 7: CRYPTO MAP CREATION & BINDING
+! ------------------------------------------------------------------------------
+
+! Create Crypto Map named 'VPN-MAP' with sequence number 10 using IPsec ISAKMP
+crypto map VPN-MAP 10 ipsec-isakmp
+ ! Specify the remote peer WAN IP (HQ-Router0)
+ set peer 12.12.12.1
+ ! Bind the transform set defined in Step 5
+ set transform-set TS-VPN
+ ! Match interesting traffic identified by ACL 101
+ match address 101
+ exit
+
+! Apply the Crypto Map to the external WAN interface (FastEthernet0/1)
+interface FastEthernet0/1
+ crypto map VPN-MAP
+ exit
+
+! ------------------------------------------------------------------------------
+! STEP 8: OPTIONAL / ROUTE-BASED GRE TUNNEL CONFIGURATION (REFERENCE)
+! ------------------------------------------------------------------------------
+! If you wish to implement route-based GRE or GRE-over-IPsec for the
+! 192.168.12.0/24 tunnel subnet noted in the project specifications:
+!
+! interface Tunnel0
+!  description Point-to-Point GRE Tunnel to HQ-Router0
+!  ip address 192.168.12.2 255.255.255.0
+!  tunnel source FastEthernet0/1
+!  tunnel destination 12.12.12.1
+!  tunnel mode gre ip
+!  exit
+!
+! ip route 192.168.1.0 255.255.255.0 192.168.12.1
+!
+! Note: In Cisco Packet Tracer 6.2sv, standard Policy-Based IPsec (Crypto Map on
+! physical interface FastEthernet0/1) provides the most reliable simulation.
+
+! ------------------------------------------------------------------------------
+! STEP 9: SAVE CONFIGURATION TO NVRAM
+! ------------------------------------------------------------------------------
+end
+write memory
+
+! ==============================================================================
+! VERIFICATION COMMANDS ON BRANCH-ROUTER1:
+! ==============================================================================
+! show ip interface brief       - Verify Fa0/0 and Fa0/1 are up/up with correct IPs
+! show ip route                 - Verify default route to 23.23.23.1 is active
+! show crypto isakmp policy     - Verify Phase 1 parameters (AES, SHA, DH-2, PSK)
+! show crypto isakmp sa         - Verify Phase 1 IKE SA is in QM_IDLE state (active)
+! show crypto ipsec sa          - Verify Phase 2 packets encapsulated/decapsulated
+! show crypto map               - Verify Crypto Map binding on FastEthernet0/1
+! ==============================================================================

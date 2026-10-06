@@ -1,0 +1,26 @@
+# ==============================================================================
+# Git Ignore - Virtual Private Network for Multi-Branch Organizations
+# ==============================================================================
+
+# Cisco Packet Tracer autosaves, locks, and backups
+*.pkt.bak
+*.pka.bak
+*.bak
+*.tmp
+*.pkz
+
+# Operating System temporary files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editor & IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test logs & outputs
+*.log
+scratch/
